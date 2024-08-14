@@ -1,0 +1,110 @@
+#Leonard Hidalgo
+# This script monitors a specified folder for new .fil files and processes them by modifying specific content 
+# and saving the output to a new file in a designated output folder.
+
+# 1. Folder Paths Setup:
+#    - $inputFolderPath: The path to the folder being monitored for new files.
+#    - $outputFolderPath: The path to the folder where processed files will be saved.
+
+# 2. File System Watcher Initialization:
+#    - A FileSystemWatcher object ($watcher) is created to monitor the input folder ($inputFolderPath) for any new .fil files.
+#    - The watcher is configured to exclude subdirectories and start monitoring events immediately.
+
+# 3. Queue Creation:
+#    - A queue ($queue) is created to manage the files detected by the watcher that need to be processed.
+
+# 4. Event Registration:
+#    - An event handler is registered to handle the "Created" event, which is triggered when a new .fil file 
+#      is created in the input folder.
+#    - When a new file is detected, its path is added to the queue for processing.
+
+# 5. File Processing Function (ProcessFile):
+#    - The script defines a function ProcessFile that takes the path of an input file, processes it, and saves the 
+#      output to a new file in the output folder.
+#    - Processing Details:
+#      - The content of the input file is read line by line.
+#      - If a line has 132 or more characters:
+#        - It extracts a substring from the 7th column (positions 106 to 112) and removes the first two characters.
+#        - It then replaces a substring in the 2nd column (positions 31 to 35) with this adjusted value.
+#      - The modified lines are stored in an array and then written to the output file in the output folder.
+
+# 6. Continuous Monitoring and Processing Loop:
+#    - The script enters an infinite loop where it continuously checks if there are files in the queue.
+#    - If the queue is not empty, the script dequeues the next file and processes it using the ProcessFile function.
+#    - If there are no files to process, the script pauses for 5 seconds to avoid high CPU usage.
+
+# 7. Output and Error Handling:
+#    - The script logs the processing status to the console, indicating the files that have been processed.
+#    - If an error occurs during file processing, it logs the error to the console.
+
+# The script runs continuously until manually stopped (e.g., by pressing Ctrl+C).
+
+
+
+
+
+# Define the input folder path and the output folder path
+$inputFolderPath = "\\add_your_own_path"
+$outputFolderPath = "\\add_your_own_path"
+
+# Set up a file system watcher to monitor the input folder for new files
+$watcher = New-Object System.IO.FileSystemWatcher
+$watcher.Path = $inputFolderPath
+$watcher.Filter = "*.fil"
+$watcher.IncludeSubdirectories = $false
+$watcher.EnableRaisingEvents = $true
+
+# Create a queue to manage files to be processed
+$queue = New-Object System.Collections.Queue
+
+# Register an event handler for when new files are created in the input folder
+Register-ObjectEvent $watcher "Created" -Action {
+    $inputFile = $event.SourceEventArgs.FullPath
+
+    # Add the input file to the queue
+    $queue.Enqueue($inputFile)
+}
+
+# Function to process a single file
+function ProcessFile($inputFile) {
+    $outputFile = Join-Path $outputFolderPath ((Get-Item $inputFile).BaseName + "output.fil")
+
+    try {
+        # Read the content of the input file
+        $fileContent = Get-Content -Path $inputFile
+
+        # Initialize an empty array to store modified content lines
+        $modifiedContent = @()
+
+        foreach ($line in $fileContent) {
+            if ($line.Length -ge 132) {
+                # Extract the 7th column and remove the first two characters, line.substring 106,7. substring of value 2 removes the first 2 digits. 
+                $adjustedValue = $line.Substring(106, 7).Substring(2)
+
+                # Replace the 2nd column (positions 31 to 35) with the adjusted value. 0, 28 padleft 7 and substring 35. 
+                $line = $line.Substring(0, 28) + $adjustedValue.PadLeft(7) + $line.Substring(35)
+            }
+            $modifiedContent += $line
+        }
+
+        # Write the modified content to the output file
+        $modifiedContent | Set-Content -Path $outputFile
+
+        Write-Host "Processed: $inputFile --> $outputFile"
+    } catch {
+        Write-Host "Error processing $inputFile : $_"
+    }
+}
+
+Write-Host "Monitoring $inputFolderPath for new .fil files. Press Ctrl+C to stop."
+
+while ($true) {
+    if ($queue.Count -gt 0) {
+        # Dequeue and process the next file in the queue
+        $nextFile = $queue.Dequeue()
+        ProcessFile $nextFile
+    } else {
+        # Sleep to avoid high CPU usage when there are no files to process
+        Start-Sleep -Seconds 5
+    }
+}
